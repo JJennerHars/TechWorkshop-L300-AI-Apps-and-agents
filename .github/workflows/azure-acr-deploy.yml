@@ -1,39 +1,41 @@
-name: Build and Push to Azure Container Registry
+name: Deploy to Azure Container Registry
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'src/**'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  AZURE_CONTAINER_REGISTRY: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  IMAGE_NAME: chat-app
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
-    env:
-      # These should be set as repository secrets!
-      AZURE_REGISTRY: ${{ secrets.AZURE_REGISTRY }}
-      AZURE_REGISTRY_USERNAME: ${{ secrets.AZURE_REGISTRY_USERNAME }}
-      AZURE_REGISTRY_PASSWORD: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
-      ENV: ${{ secrets.ENV }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up .env file for Docker build context
-        run: |
-          echo "$ENV" > src/.env
+      - name: Create .env file from secret
+        run: 'echo "$ENV" > src/.env'
+        shell: bash
+        env:
+          ENV: ${{ secrets.ENV }}
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+          username: ${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
 
       - name: Build and push Docker image
         run: |
-          # Login to ACR
-          echo "${AZURE_REGISTRY_PASSWORD}" | docker login ${AZURE_REGISTRY} -u "${AZURE_REGISTRY_USERNAME}" --password-stdin
-          # Build and push image
-          docker build -t ${AZURE_REGISTRY}/techworkshop-l300:${{ github.sha }} src/
-          docker push ${AZURE_REGISTRY}/techworkshop-l300:${{ github.sha }}
-
-      - name: Clean up .env file
-        run: rm src/.env
-
-    # This ensures that .env is not committed or exposed,
-    # and only exists during the Docker build step.
+          cd src/
+          docker build -t ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest .
+          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
